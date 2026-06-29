@@ -1,7 +1,6 @@
 import { useEffect, useState } from "react";
 import { useParams } from "react-router-dom";
 import { getSummary } from "../api/wikipedia";
-import "../styles/room.css";
 
 export default function DetailRoom() {
   const { id } = useParams();

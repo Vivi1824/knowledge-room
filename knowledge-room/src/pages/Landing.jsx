@@ -1,29 +1,152 @@
-import { useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useMemo, useState } from "react";
 import "../styles/landing.css";
 
+import brain from "../assets/brain.svg";
+import sparkles from "../assets/sparkles.png";
+import image from "../assets/image.png";
+import brainIcon from "../assets/brain.svg";
+import libraryIcon from "../assets/library.svg";
+import atomIcon from "../assets/atom.svg";
+import compassIcon from "../assets/compass.svg";
+import arrowRight from "../assets/arrow-right.png";
+import homeIcon from "../assets/icons/home.svg";
+import shareIcon from "../assets/icons/share.png";
+import favoritesIcon from "../assets/icons/heart.png";
+
+const featureCards = [
+    {
+        title: "CONNESSIONI",
+        description: "Scopri legami invisibili tra concetti distanti.",
+        image: brainIcon
+    },
+    {
+        title: "ARCHIVIO",
+        description: "Accesso a milioni di nodi di conoscenza certificata.",
+        image: libraryIcon
+    },
+    {
+        title: "ANALISI",
+        description: "Approfondimenti dettagliati con dati cross-piattaforma.",
+        image: atomIcon
+    },
+    {
+        title: "NAVIGAZIONE",
+        description: "Interfaccia spaziale per un'esplorazione fluida.",
+        image: compassIcon
+    },
+];
+const suggestedTopics = [
+    "Einstein",
+    "Spazio-Tempo",
+    "Impero Romano",
+    "Leonardo da Vinci",
+    "AI",
+];
+
 export default function Landing() {
-  const [query, setQuery] = useState("");
-  const navigate = useNavigate();
+    const [query, setQuery] = useState("");
+    const suggestions = useMemo(() => suggestedTopics, []);
 
-  const handleStart = () => {
-    if (!query.trim()) return;
-    navigate(`/graph/${query}`);
-  };
+    const handleSubmit = (e) => e.preventDefault();
 
-  return (
-    <div className="landing">
-      <h1>🧠 Knowledge Room Explorer</h1>
+    return (
+        <main className="main">
+            <aside className="sidebar">
+                <div className="sidebarTop">
+                    <div className="logoDot" />
+                </div>
 
-      <input
-        value={query}
-        onChange={(e) => setQuery(e.target.value)}
-        placeholder="Enter a topic (e.g. Einstein, Space, Rome...)"
-      />
+                <nav className="sidebarNav">
+                    <button className="navItem">
+                        <img src={homeIcon} alt="Home" className="navIcon" />
+                    </button>
 
-      <button onClick={handleStart}>
-        Enter the Knowledge Graph
-      </button>
-    </div>
-  );
+                    <button className="navItem">
+                        <img src={shareIcon} alt="Condividi" className="navIcon" />
+                    </button>
+
+                    <button className="navItem">
+                        <img src={favoritesIcon} alt="Preferiti" className="navIcon" />
+                    </button>
+                </nav>
+
+                <div className="sidebarBottom">
+                    <button className="navItem">
+                        {/* <img src={userIcon} alt="Profilo" className="navIcon" /> */}
+                    </button>
+                </div>
+            </aside>
+            {/* CANVAS 1920x1080 */}
+            <div className="canvas">
+
+                {/* BACKGROUND */}
+                <div className="bg">
+                    <img src={image} className="bgImage" alt="" />
+                    <div className="overlay" />
+                </div>
+
+                {/* GLOWS */}
+                <div className="glowTop" />
+                <div className="glowBottom" />
+
+                {/* HEADER */}
+                <header className="header">
+                    <img src={brain} className="brain" alt="" />
+                    <h1 className="title">SALA DELLA CONOSCENZA</h1>
+
+                    <p className="subtitle">
+                        Esplora l'universo della conoscenza interconnessa
+                    </p>
+                </header>
+
+                {/* SEARCH */}
+                <section className="search">
+                    <div className="searchTitle">
+                        <img src={sparkles} className="sparkles" alt="" />
+                        <p>
+                            COSA VUOI ESPLORARE OGGI?
+                        </p>
+                    </div>
+
+                    <input
+                        value={query}
+                        onChange={(e) => setQuery(e.target.value)}
+                        placeholder="Cerca un argomento..."
+                        className="input"
+                    />
+
+                    <div className="suggestions">
+                        {suggestions.map((t) => (
+                            <button
+                                key={t}
+                                type="button"
+                                onClick={() => setQuery(t)}
+                                className="suggestionBtn"
+                            >
+                                {t}
+                            </button>
+                        ))}
+                    </div>
+
+                    <button className="button" onClick={handleSubmit}>
+                        <span>ENTRA NEL GRAFO</span>
+                        <img src={arrowRight} className="arrow" alt="" />
+                    </button>
+                </section>
+
+                {/* CARDS */}
+                <section className="cards">
+                    {featureCards.map((card) => (
+                        <div key={card.title} className="card">
+                            <img src={card.image} className="cardIconImg" alt="" />
+                            <h3 className="cardTitle">{card.title}</h3>
+                            <p className="cardDesc">{card.description}</p>
+                        </div>
+                    ))}
+                </section>
+
+            </div>
+        </main>
+
+    );
 }
