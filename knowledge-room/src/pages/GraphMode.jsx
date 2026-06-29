@@ -1,39 +1,40 @@
-import { useEffect, useState } from "react";
-import { useParams } from "react-router-dom";
-import { getWikidataId } from "../api/wikidata";
-import { getEntityRelations } from "../api/wikidata";
+import { useEffect, useRef } from "react";
+import ForceGraph from "force-graph";
 
 export default function GraphMode() {
-  const { title } = useParams();
-  const [nodes, setNodes] = useState([]);
+  const containerRef = useRef(null);
 
   useEffect(() => {
-    async function load() {
-      const qid = await getWikidataId(title);
-      const links = await getEntityRelations(qid);
+    const data = {
+      nodes: [
+        { id: "Einstein" },
+        { id: "Relativity" },
+        { id: "Quantum" },
+        { id: "Newton" }
+      ],
+      links: [
+        { source: "Einstein", target: "Relativity" },
+        { source: "Einstein", target: "Quantum" },
+        { source: "Relativity", target: "Newton" }
+      ]
+    };
 
-      setNodes([
-        { id: title, group: 1 },
-        ...links.map((l) => ({ id: l, group: 2 })),
-      ]);
-    }
+    const graph = ForceGraph()(containerRef.current)
+      .graphData(data)
+      .nodeLabel("id")
+      .nodeAutoColorBy("id")
+      .linkDirectionalParticles(2)
+      .linkDirectionalParticleSpeed(0.01);
 
-    load();
-  }, [title]);
+    return () => {
+      graph._destructor?.();
+    };
+  }, []);
 
   return (
-    <div style={{ padding: 20 }}>
-      <h2>Graph Mode: {title}</h2>
-
-      {nodes.map((n, i) => (
-        <div key={i} style={{
-          margin: 10,
-          padding: 10,
-          background: "rgba(255,255,255,0.05)"
-        }}>
-          {n.id}
-        </div>
-      ))}
-    </div>
+    <div
+      ref={containerRef}
+      style={{ width: "100vw", height: "100vh", background: "#0b0f1a" }}
+    />
   );
 }
