@@ -1,4 +1,6 @@
 import { useMemo, useState } from "react";
+import { useNavigate } from "react-router-dom";
+
 import "../styles/landing.css";
 
 import brain from "../assets/brain.svg";
@@ -44,10 +46,17 @@ const suggestedTopics = [
 ];
 
 export default function Landing() {
+    const navigate = useNavigate();
     const [query, setQuery] = useState("");
     const suggestions = useMemo(() => suggestedTopics, []);
 
-    const handleSubmit = (e) => e.preventDefault();
+    const handleSubmit = (e) => {
+        e.preventDefault();
+
+        if (!query.trim()) return;
+
+        navigate(`/graph/${encodeURIComponent(query.trim())}`);
+    };
 
     return (
         <main className="main">
@@ -100,7 +109,7 @@ export default function Landing() {
                 </header>
 
                 {/* SEARCH */}
-                <section className="search">
+                <form className="search" onSubmit={handleSubmit}>
                     <div className="searchTitle">
                         <img src={sparkles} className="sparkles" alt="" />
                         <p>
@@ -128,11 +137,11 @@ export default function Landing() {
                         ))}
                     </div>
 
-                    <button className="button" onClick={handleSubmit}>
+                    <button type="submit" className="button">
                         <span>ENTRA NEL GRAFO</span>
                         <img src={arrowRight} className="arrow" alt="" />
                     </button>
-                </section>
+                </form>
 
                 {/* CARDS */}
                 <section className="cards">

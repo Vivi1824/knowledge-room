@@ -1,44 +1,49 @@
 import axios from "axios";
 
-export async function getWikidataId(title) {
+const endpoint = "https://query.wikidata.org/sparql";
+
+export async function searchEntity(search) {
   const res = await axios.get(
-    "https://en.wikipedia.org/w/api.php",
+    "https://www.wikidata.org/w/api.php",
     {
       params: {
-        action: "query",
-        titles: title,
-        prop: "pageprops",
+        action: "wbsearchentities",
+        search,
+        language: "en",
         format: "json",
-        origin: "*",
-      },
+        origin: "*"
+      }
     }
   );
 
-  const pages = res.data.query.pages;
-  const page = Object.values(pages)[0];
+  if (!res.data.search.length) return null;
 
-  return page.pageprops.wikibase_item; // QID
+  return res.data.search[0];
 }
 
-export async function getEntityRelations(qid) {
-  const res = await axios.get(
-    `https://www.wikidata.org/wiki/Special:EntityData/${qid}.json`
-  );
+export async function getNeighbors(qid) {
+  const query = `
+SELECT ?item ?itemLabel WHERE {
+  wd:${qid} ?p ?item.
 
-  const entity = res.data.entities[qid];
+  FILTER(isIRI(?item))
 
-  const claims = entity.claims;
+  SERVICE wikibase:label {
+    bd:serviceParam wikibase:language "en".
+  }
+}
+LIMIT 25
+`;
 
-  // prendiamo solo "linked items" (P279 = subclass, P31 = instance of ecc.)
-  let links = [];
-
-  Object.keys(claims).forEach((prop) => {
-    claims[prop].forEach((c) => {
-      if (c.mainsnak?.datavalue?.value?.id) {
-        links.push(c.mainsnak.datavalue.value.id);
-      }
-    });
+  const res = await axios.get(endpoint, {
+    params: {
+      format: "json",
+      query
+    }
   });
 
-  return links.slice(0, 10); // limitiamo per UI
+  return res.data.results.bindings.map((r) => ({
+    id: r.item.value.split("/").pop(),
+    label: r.itemLabel.value
+  }));
 }

@@ -1,0 +1,59 @@
+.graphWrapper {
+  position: relative;
+  width: 100vw;
+  height: 100vh;
+  background: #0b0f1a;
+  overflow: hidden;
+}
+
+.graphCanvas {
+  width: 100%;
+  height: 100%;
+}
+
+.sidePanel {
+  position: absolute;
+  right: 20px;
+  top: 20px;
+  width: 260px;
+  padding: 16px;
+  background: rgba(20, 20, 30, 0.6);
+  backdrop-filter: blur(20px);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 16px;
+  color: white;
+  animation: fadeIn 0.3s ease;
+}
+
+.sidePanel h2 {
+  margin: 0;
+  font-size: 18px;
+}
+
+.sidePanel .type {
+  font-size: 12px;
+  opacity: 0.6;
+  margin-bottom: 10px;
+}
+
+.sidePanel button {
+  margin-top: 10px;
+  width: 100%;
+  padding: 10px;
+  border-radius: 10px;
+  border: none;
+  background: #7b30e0;
+  color: white;
+  cursor: pointer;
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
