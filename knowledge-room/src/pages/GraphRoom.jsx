@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import ForceGraph from "force-graph";
+import { forceLink, forceManyBody, forceCenter, forceCollide } from "d3-force-3d";
 import { useParams, useNavigate } from "react-router-dom";
 
 import { searchEntity, getNeighbors } from "../api/wikidata";
@@ -11,7 +12,6 @@ import compassIcon from "../assets/compass.svg";
 import homeIcon from "../assets/icons/home.svg";
 import shareIcon from "../assets/icons/share.png";
 import favoritesIcon from "../assets/icons/heart.png";
-import sparklesIcon from "../assets/sparkles.png";
 
 export default function GraphRoom() {
   const { topic } = useParams();
@@ -24,6 +24,7 @@ export default function GraphRoom() {
   const [selectedNode, setSelectedNode] = useState(null);
   const [graphStats, setGraphStats] = useState({ nodes: 0, links: 0 });
   const [isLoading, setIsLoading] = useState(true);
+  const [graphReady, setGraphReady] = useState(false);
   const [loadError, setLoadError] = useState("");
   const [isSaved, setIsSaved] = useState(false);
   const navigate = useNavigate();
@@ -45,7 +46,7 @@ export default function GraphRoom() {
     const res = await getNeighbors(id);
 
     const normalized = (res || [])
-      .slice(0, 6)
+      .slice(0, 18)
       .map((n) => ({
         id: n.id,
         name: n.label,
@@ -85,6 +86,7 @@ export default function GraphRoom() {
 
     async function load() {
       setIsLoading(true);
+      setGraphReady(false);
       setLoadError("");
       setSelectedNode(null);
       setGraphStats({ nodes: 0, links: 0 });
@@ -138,21 +140,27 @@ export default function GraphRoom() {
 
           // layout più sparso
           .cooldownTicks(200)
-          .d3Force("charge", (d3) =>
-            d3.forceManyBody().strength(-260)
+          .d3Force(
+            "charge",
+            forceManyBody().strength(-260)
           )
-          .d3Force("link", (d3) =>
-            d3.forceLink()
-              .id((d) => d.id)
+
+          .d3Force(
+            "link",
+            forceLink()
+              .id(d => d.id)
               .distance(215)
           )
-          .d3Force("collision", (d3) =>
-            d3.forceCollide()
-              .radius((node) => getNodeMetrics(node, false).collisionRadius)
+          .d3Force(
+            "collision",
+            forceCollide()
+              .radius(node => getNodeMetrics(node, false).collisionRadius)
               .strength(0.82)
           )
-          .d3Force("center", (d3) =>
-            d3.forceCenter()
+
+          .d3Force(
+            "center",
+            forceCenter()
           )
 
           // =========================
@@ -175,8 +183,10 @@ export default function GraphRoom() {
           // NODI
           // =========================
           .nodeRelSize(6)
-          .nodeLabel((n) => n.name)
+          .nodeLabel((n) => getNodeDisplayName(n))
+          .nodeColor((n) => getPalette(n.type, selectedRef.current === n.id).fill)
           .nodeCanvasObject((node, ctx, globalScale) => {
+            if (!isFinite(node.x) || !isFinite(node.y)) return;
             drawKnowledgeNode(
               node,
               ctx,
@@ -201,7 +211,10 @@ export default function GraphRoom() {
             selectedRef.current = node.id;
             setSelectedNode(node);
 
-            const current = graph.graphData();
+            const currentGraph = graphInstance.current;
+            if (!currentGraph) return;
+
+            const current = currentGraph.graphData();
 
             const neighbors = await fetchWithCache(node.id);
 
@@ -244,8 +257,8 @@ export default function GraphRoom() {
               links: nextData.links.length,
             });
 
+            fitGraph(graph, nextData.nodes.length);
             graph.centerAt(node.x, node.y, 600);
-            graph.zoom(2.15, 600);
           })
 
           // =========================
@@ -260,16 +273,22 @@ export default function GraphRoom() {
           graph
             .width(graphRef.current.clientWidth)
             .height(graphRef.current.clientHeight);
+          fitGraph(graph, data.nodes.length);
         };
 
         window.addEventListener("resize", resizeGraph);
-        graph.zoomToFit(700, 80);
+        graph.onEngineStop(() => {
+          fitGraph(graph, graph.graphData().nodes.length);
+        });
+        fitGraph(graph, data.nodes.length);
 
         graphInstance.current = graph;
+        setGraphReady(true);
         setIsLoading(false);
       } catch {
         if (!canceled) {
           setLoadError("Non sono riuscito a caricare il grafo.");
+          setGraphReady(false);
           setIsLoading(false);
         }
       }
@@ -364,13 +383,6 @@ export default function GraphRoom() {
 
         <div className="graphViewport">
           <div ref={graphRef} className="graphCanvas" />
-
-          {(isLoading || loadError) && (
-            <div className="graphStatePanel">
-              <img src={sparklesIcon} alt="" />
-              <p>{loadError || "Costruzione del grafo..."}</p>
-            </div>
-          )}
         </div>
 
         <div className="graphLegend" aria-label="Legenda grafo">
@@ -424,27 +436,84 @@ export default function GraphRoom() {
 // HELPERS
 // =========================
 const legendItems = [
-  { label: "Persone", color: "#38bdf8" },
-  { label: "Luoghi", color: "#34d399" },
-  { label: "Concetti", color: "#f8fafc" },
+  { label: "Persone", color: getPalette("person", false).fill },
+  { label: "Luoghi", color: getPalette("place", false).fill },
+  { label: "Concetti", color: getPalette("concept", false).fill },
 ];
 
 function classify(label = "") {
   const l = label.toLowerCase();
 
-  if (
-    l.includes("city") ||
-    l.includes("country") ||
-    l.includes("italy")
-  )
-    return "place";
+  const placeKeywords = [
+    "city",
+    "country",
+    "italy",
+    "città",
+    "paese",
+    "stato",
+    "region",
+    "provincia",
+    "province",
+    "regione",
+    "village",
+    "town",
+    "mount",
+    "river",
+    "lake",
+    "sea",
+    "ocean",
+    "island",
+    "park",
+    "capital",
+    "capoluogo",
+    "fiume",
+    "lago",
+    "montagna",
+    "isola",
+  ];
 
-  if (
-    l.includes("born") ||
-    l.includes("physicist") ||
-    l.includes("king")
-  )
+  const personKeywords = [
+    "born",
+    "died",
+    "king",
+    "queen",
+    "actor",
+    "actress",
+    "musician",
+    "singer",
+    "author",
+    "writer",
+    "artist",
+    "scientist",
+    "engineer",
+    "politician",
+    "footballer",
+    "president",
+    "poet",
+    "philosopher",
+    "doctor",
+    "lawyer",
+    "historian",
+    "composer",
+    "director",
+    "attore",
+    "cantante",
+    "scrittore",
+    "artista",
+    "regista",
+    "poeta",
+    "scienziato",
+    "fisico",
+    "matematico",
+  ];
+
+  if (placeKeywords.some((keyword) => l.includes(keyword))) {
+    return "place";
+  }
+
+  if (personKeywords.some((keyword) => l.includes(keyword))) {
     return "person";
+  }
 
   return "concept";
 }
@@ -517,7 +586,27 @@ function decodeTopic(value) {
   }
 }
 
+function getNodeDisplayName(node) {
+  return node.name || node.label || node.id || "N/A";
+}
+
+function estimateMaxZoom(nodeCount) {
+  if (nodeCount <= 8) return 1.8;
+  if (nodeCount <= 12) return 1.4;
+  if (nodeCount <= 16) return 1.15;
+  if (nodeCount <= 22) return 0.95;
+  if (nodeCount <= 28) return 0.75;
+  return 0.55;
+}
+
+function fitGraph(graph, nodeCount) {
+  if (!graph) return;
+  const maxZoom = estimateMaxZoom(nodeCount);
+  graph.zoomToFit(480, 80, maxZoom);
+}
+
 function drawKnowledgeNode(node, ctx, selected, globalScale = 1) {
+  if (!isFinite(node.x) || !isFinite(node.y)) return;
   const metrics = getNodeMetrics(node, selected);
   const palette = getPalette(node.type, selected);
   const x = node.x - metrics.width / 2;
@@ -586,7 +675,7 @@ function drawKnowledgeNode(node, ctx, selected, globalScale = 1) {
 
   ctx.fillStyle = palette.text;
   ctx.fillText(
-    fitLabel(ctx, node.name || node.id, metrics.textWidth),
+    fitLabel(ctx, getNodeDisplayName(node), metrics.textWidth),
     node.x,
     node.y + 0.5
   );

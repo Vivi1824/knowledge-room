@@ -262,7 +262,20 @@ body {
 .graphViewport {
   position: absolute;
   z-index: 2;
+  inset: 132px 36px 88px 92px;
+  border-radius: 32px;
+  overflow: hidden;
+  background: rgba(7, 11, 22, 0.92);
+  box-shadow: inset 0 0 120px rgba(99, 102, 241, 0.12), 0 34px 120px rgba(0, 0, 0, 0.24);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.graphViewport::before {
+  content: "";
+  position: absolute;
   inset: 0;
+  background: radial-gradient(circle at center, rgba(96, 165, 250, 0.12), transparent 42%);
+  pointer-events: none;
 }
 
 .graphCanvas {
@@ -274,6 +287,8 @@ body {
 
 .graphCanvas canvas {
   display: block;
+  width: 100% !important;
+  height: 100% !important;
 }
 
 .graphStatePanel {
