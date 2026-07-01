@@ -23,9 +23,13 @@ export async function searchEntity(search) {
 
 export async function getNeighbors(qid) {
   const query = `
+PREFIX wd: <http://www.wikidata.org/entity/>
+PREFIX wdt: <http://www.wikidata.org/prop/direct/>
+
 SELECT ?item ?itemLabel WHERE {
   wd:${qid} ?p ?item.
 
+  FILTER(STRSTARTS(STR(?p), STR(wdt:)))
   FILTER(isIRI(?item))
 
   SERVICE wikibase:label {
