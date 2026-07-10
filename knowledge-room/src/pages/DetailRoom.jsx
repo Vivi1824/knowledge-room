@@ -99,7 +99,14 @@ export default function DetailRoom() {
     const nextValue = !isSaved;
 
     try {
-      window.localStorage.setItem(savedKey(id), String(nextValue));
+      if (nextValue) {
+        window.localStorage.setItem(
+          savedKey(id),
+          JSON.stringify({ saved: true, label: data?.title || id })
+        );
+      } else {
+        window.localStorage.removeItem(savedKey(id));
+      }
     } catch {
       // The visual state still works when storage is unavailable.
     }
@@ -112,7 +119,6 @@ export default function DetailRoom() {
     <main className="detailPage">
       <aside className="detailSidebar">
         <div className="detailSidebarTop" aria-label="Knowledge Room">
-          <div className="detailLogoDot" />
         </div>
 
         <nav className="detailSidebarNav" aria-label="Navigazione dettagli">
@@ -430,7 +436,15 @@ function savedKey(id) {
 
 function readSavedState(id) {
   try {
-    return window.localStorage.getItem(savedKey(id)) === "true";
+    const value = window.localStorage.getItem(savedKey(id));
+    if (!value) return false;
+
+    try {
+      const parsed = JSON.parse(value);
+      return parsed?.saved === true || parsed?.saved === "true";
+    } catch {
+      return value === "true";
+    }
   } catch {
     return false;
   }

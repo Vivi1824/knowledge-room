@@ -50,6 +50,25 @@ export default function Landing() {
     const [query, setQuery] = useState("");
     const suggestions = useMemo(() => suggestedTopics, []);
 
+    const handleShare = async () => {
+        try {
+            const shareData = {
+                title: `Knowledge Room`,
+                text: `Esplora la Knowledge Room: un viaggio nella conoscenza interconnessa.`,
+                url: window.location.href,
+            };
+
+            if (navigator.share) {
+                await navigator.share(shareData);
+                return;
+            }
+
+            await navigator.clipboard?.writeText(window.location.href);
+        } catch {
+            // Condivisione opzionale: non blocchiamo l'uso della pagina.
+        }
+    };
+
     const handleSubmit = (e) => {
         e.preventDefault();
 
@@ -62,19 +81,18 @@ export default function Landing() {
         <main className="main">
             <aside className="sidebar">
                 <div className="sidebarTop">
-                    <div className="logoDot" />
                 </div>
 
                 <nav className="sidebarNav">
-                    <button className="navItem">
+                    <button className="navItem" type="button">
                         <img src={homeIcon} alt="Home" className="navIcon" />
                     </button>
 
-                    <button className="navItem">
+                    <button className="navItem" type="button" onClick={handleShare} title="Condividi">
                         <img src={shareIcon} alt="Condividi" className="navIcon" />
                     </button>
 
-                    <button className="navItem">
+                    <button className="navItem" type="button" onClick={() => navigate("/favorites")} title="Preferiti">
                         <img src={favoritesIcon} alt="Preferiti" className="navIcon" />
                     </button>
                 </nav>

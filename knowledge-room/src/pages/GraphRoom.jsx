@@ -29,7 +29,6 @@ export default function GraphRoom() {
   const [graphStats, setGraphStats] = useState({ nodes: 0, links: 0 });
   const [isLoading, setIsLoading] = useState(true);
   const [graphReady, setGraphReady] = useState(false);
-  const [loadError, setLoadError] = useState("");
   const [isSaved, setIsSaved] = useState(false);
   const [rootLabel, setRootLabel] = useState("");
   const [explorationState, setExplorationState] = useState(null);
@@ -42,6 +41,10 @@ export default function GraphRoom() {
   const autoExploreRoot = location.state?.autoExploreRoot || "";
   const selectedNodeId = selectedNode?.id;
   const selectedNodeName = selectedNode?.name;
+
+  useEffect(() => {
+    setIsSaved(readSavedGraph(topic));
+  }, [topic]);
 
   useEffect(() => {
     if (!selectedNodeId) return undefined;
@@ -129,6 +132,30 @@ export default function GraphRoom() {
     }
   };
 
+  const toggleSaved = () => {
+    const nextValue = !isSaved;
+
+    try {
+      window.localStorage.setItem(savedGraphKey(topic), String(nextValue));
+    } catch {
+      // Storage optional.
+    }
+
+    setIsSaved(nextValue);
+  };
+
+  function savedGraphKey(topicValue) {
+    return `knowledge-room:saved:graph:${encodeURIComponent(topicValue)}`;
+  }
+
+  function readSavedGraph(topicValue) {
+    try {
+      return window.localStorage.getItem(savedGraphKey(topicValue)) === "true";
+    } catch {
+      return false;
+    }
+  }
+
   // =========================
   // INIT GRAPH
   // =========================
@@ -140,7 +167,6 @@ export default function GraphRoom() {
     async function load() {
       setIsLoading(true);
       setGraphReady(false);
-      setLoadError("");
       setSelectedNode(null);
       setSelectedConnections(0);
       setGraphStats({ nodes: 0, links: 0 });
@@ -161,7 +187,7 @@ export default function GraphRoom() {
         if (canceled) return;
 
         if (!entity) {
-          setLoadError("Nessun nodo trovato per questa ricerca.");
+          setIsSaved(readSavedGraph(topic));
           setIsLoading(false);
           return;
         }
@@ -424,7 +450,6 @@ export default function GraphRoom() {
         }
       } catch {
         if (!canceled) {
-          setLoadError("Non sono riuscito a caricare il grafo.");
           setGraphReady(false);
           setIsLoading(false);
         }
@@ -448,7 +473,6 @@ export default function GraphRoom() {
     <main className="graphPage">
       <aside className="graphSidebar">
         <div className="graphSidebarTop">
-          <div className="graphLogoDot" />
         </div>
 
         <nav className="graphSidebarNav" aria-label="Navigazione grafo">
@@ -525,19 +549,14 @@ export default function GraphRoom() {
           <div ref={graphRef} className="graphCanvas" />
         </div>
 
-        {(isLoading || loadError) && (
-          <div className="graphStatePanel" role={loadError ? "alert" : "status"}>
+        {isLoading && (
+          <div className="graphStatePanel" role="status">
             <img src={brainIcon} alt="" />
-            <p>{loadError || "Sto costruendo le connessioni…"}</p>
-            {loadError && (
-              <button type="button" onClick={() => navigate(0)}>
-                Riprova
-              </button>
-            )}
+            <p>Sto costruendo le connessioni…</p>
           </div>
         )}
 
-        {explorationState && !loadError && (
+        {explorationState && (
           <div
             className={`graphExplorationNotice is-${explorationState.status}`}
             role="status"
@@ -578,10 +597,6 @@ export default function GraphRoom() {
             )}
 
             <div className="sidePanelHeader">
-              <span
-                className="sidePanelDot"
-                style={{ background: getPalette(selectedNode.type, true).fill }}
-              />
               <p>{selectedNode.type}</p>
             </div>
 

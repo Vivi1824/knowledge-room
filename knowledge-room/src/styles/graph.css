@@ -47,16 +47,6 @@ body {
   min-height: 48px;
 }
 
-.graphLogoDot {
-  width: 10px;
-  height: 10px;
-  border-radius: 999px;
-  background: #8b5cf6;
-  box-shadow:
-    0 0 18px rgba(139, 92, 246, 0.95),
-    0 0 36px rgba(56, 189, 248, 0.28);
-}
-
 .graphSidebarNav {
   display: flex;
   flex-direction: column;
@@ -498,14 +488,6 @@ body {
   font-weight: 800;
   letter-spacing: 1.6px;
   text-transform: uppercase;
-}
-
-.sidePanelDot {
-  width: 8px;
-  height: 8px;
-  flex: 0 0 8px;
-  border-radius: 999px;
-  box-shadow: 0 0 18px rgba(168, 85, 247, 0.7);
 }
 
 .sidePanel h2 {
