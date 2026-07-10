@@ -591,18 +591,42 @@ function getNodeDisplayName(node) {
 }
 
 function estimateMaxZoom(nodeCount) {
-  if (nodeCount <= 8) return 1.8;
-  if (nodeCount <= 12) return 1.4;
-  if (nodeCount <= 16) return 1.15;
-  if (nodeCount <= 22) return 0.95;
-  if (nodeCount <= 28) return 0.75;
-  return 0.55;
+  if (nodeCount <= 8) return 0.06;
+  if (nodeCount <= 12) return 0.06;
+  if (nodeCount <= 16) return 0.06;
+  if (nodeCount <= 22) return 0.06;
+  if (nodeCount <= 28) return 0.06;
+  return 0.12;
 }
 
 function fitGraph(graph, nodeCount) {
   if (!graph) return;
-  const maxZoom = estimateMaxZoom(nodeCount);
-  graph.zoomToFit(480, 80, maxZoom);
+  const zoomLevel = estimateMaxZoom(nodeCount);
+
+  if (typeof graph.minZoom === "function") {
+    graph.minZoom(0.01);
+  }
+  if (typeof graph.maxZoom === "function") {
+    graph.maxZoom(0.12);
+  }
+
+  const bbox = typeof graph.getGraphBbox === "function" ? graph.getGraphBbox() : null;
+  if (bbox) {
+    const centerX = (bbox.x[0] + bbox.x[1]) / 2;
+    const centerY = (bbox.y[0] + bbox.y[1]) / 2;
+    graph.centerAt(centerX, centerY, 0);
+  }
+
+  const applyZoom = () => {
+    if (typeof graph.zoom === "function") {
+      graph.zoom(zoomLevel, 0);
+    }
+  };
+
+  applyZoom();
+  window.requestAnimationFrame(applyZoom);
+  setTimeout(applyZoom, 100);
+  setTimeout(applyZoom, 300);
 }
 
 function drawKnowledgeNode(node, ctx, selected, globalScale = 1) {
