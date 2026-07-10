@@ -1,9 +1,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import ForceGraph from "force-graph";
 import { forceLink, forceManyBody, forceCenter, forceCollide } from "d3-force-3d";
-import { useParams, useNavigate } from "react-router-dom";
+import { useLocation, useParams, useNavigate } from "react-router-dom";
 
 import { searchEntity, getNeighbors } from "../api/wikidata";
+import { getSummaryByWikidataId } from "../api/wikipedia";
 import "../styles/graph.css";
 
 import ambientImage from "../assets/image.png";
@@ -19,19 +20,71 @@ export default function GraphRoom() {
   const graphInstance = useRef(null);
 
   const cacheRef = useRef(new Map());
+  const previewCacheRef = useRef(new Map());
   const selectedRef = useRef(null);
 
   const [selectedNode, setSelectedNode] = useState(null);
+  const [selectedConnections, setSelectedConnections] = useState(0);
+  const [nodePreview, setNodePreview] = useState({ id: null, status: "idle", data: null });
   const [graphStats, setGraphStats] = useState({ nodes: 0, links: 0 });
   const [isLoading, setIsLoading] = useState(true);
   const [graphReady, setGraphReady] = useState(false);
   const [loadError, setLoadError] = useState("");
   const [isSaved, setIsSaved] = useState(false);
+  const [rootLabel, setRootLabel] = useState("");
+  const [explorationState, setExplorationState] = useState(null);
   const navigate = useNavigate();
+  const location = useLocation();
 
   const topicLabel = useMemo(() => {
     return decodeTopic(topic);
   }, [topic]);
+  const autoExploreRoot = location.state?.autoExploreRoot || "";
+  const selectedNodeId = selectedNode?.id;
+  const selectedNodeName = selectedNode?.name;
+
+  useEffect(() => {
+    if (!selectedNodeId) return undefined;
+
+    let cancelled = false;
+
+    async function loadPreview() {
+      setNodePreview({ id: selectedNodeId, status: "loading", data: null });
+
+      try {
+        const cached = previewCacheRef.current.get(selectedNodeId);
+        const preview = cached || await getSummaryByWikidataId(selectedNodeId);
+
+        if (!cached) previewCacheRef.current.set(selectedNodeId, preview);
+
+        if (!cancelled) {
+          setNodePreview({ id: selectedNodeId, status: "success", data: preview });
+
+          if (!preview.hasDetailedInfo) {
+            const isAlreadyRoot = topicLabel.toUpperCase() === selectedNodeId.toUpperCase();
+
+            navigate(`/graph/${selectedNodeId}`, {
+              replace: isAlreadyRoot,
+              state: {
+                autoExploreRoot: selectedNodeId,
+                rootLabel: preview.title || selectedNodeName || selectedNodeId,
+              },
+            });
+          }
+        }
+      } catch {
+        if (!cancelled) {
+          setNodePreview({ id: selectedNodeId, status: "error", data: null });
+        }
+      }
+    }
+
+    loadPreview();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [navigate, selectedNodeId, selectedNodeName, topicLabel]);
 
   // =========================
   // CACHE FETCH
@@ -89,9 +142,19 @@ export default function GraphRoom() {
       setGraphReady(false);
       setLoadError("");
       setSelectedNode(null);
+      setSelectedConnections(0);
       setGraphStats({ nodes: 0, links: 0 });
       selectedRef.current = null;
       setIsSaved(false);
+      setRootLabel("");
+      setExplorationState(
+        autoExploreRoot
+          ? {
+              status: "searching",
+              message: "Il nodo non ha una scheda diretta: esploro le sue connessioni…",
+            }
+          : null
+      );
 
       try {
         const entity = await searchEntity(topic);
@@ -109,14 +172,16 @@ export default function GraphRoom() {
           id: entity.id,
           name: entity.label,
           type: classify(entity.label),
+          isRoot: true,
         };
+        setRootLabel(entity.label);
 
         const neighbors = await fetchWithCache(entity.id);
 
         if (canceled || !graphRef.current) return;
 
         const data = {
-          nodes: [root, ...neighbors],
+          nodes: [root, ...neighbors.map((node) => ({ ...node, isRoot: false }))],
           links: neighbors.map((n) => ({
             source: root.id,
             target: n.id,
@@ -184,18 +249,23 @@ export default function GraphRoom() {
           // =========================
           .nodeRelSize(6)
           .nodeLabel((n) => getNodeDisplayName(n))
-          .nodeColor((n) => getPalette(n.type, selectedRef.current === n.id).fill)
+          .nodeColor((n) =>
+            getPalette(n.type, selectedRef.current === n.id || n.isRoot).fill
+          )
           .nodeCanvasObject((node, ctx, globalScale) => {
             if (!isFinite(node.x) || !isFinite(node.y)) return;
             drawKnowledgeNode(
               node,
               ctx,
-              selectedRef.current === node.id,
+              selectedRef.current === node.id || node.isRoot,
               globalScale
             );
           })
           .nodePointerAreaPaint((node, color, ctx) => {
-            const metrics = getNodeMetrics(node, selectedRef.current === node.id);
+            const metrics = getNodeMetrics(
+              node,
+              selectedRef.current === node.id || node.isRoot
+            );
             const x = node.x - metrics.width / 2;
             const y = node.y - metrics.height / 2;
 
@@ -210,11 +280,13 @@ export default function GraphRoom() {
           .onNodeClick(async (node) => {
             selectedRef.current = node.id;
             setSelectedNode(node);
+            setNodePreview({ id: node.id, status: "loading", data: null });
 
             const currentGraph = graphInstance.current;
             if (!currentGraph) return;
 
             const current = currentGraph.graphData();
+            setSelectedConnections(countNodeConnections(current.links, node.id));
 
             const neighbors = await fetchWithCache(node.id);
 
@@ -256,6 +328,7 @@ export default function GraphRoom() {
               nodes: nextData.nodes.length,
               links: nextData.links.length,
             });
+            setSelectedConnections(countNodeConnections(nextData.links, node.id));
 
             fitGraph(graph, nextData.nodes.length);
             graph.centerAt(node.x, node.y, 600);
@@ -273,7 +346,7 @@ export default function GraphRoom() {
           graph
             .width(graphRef.current.clientWidth)
             .height(graphRef.current.clientHeight);
-          fitGraph(graph, data.nodes.length);
+          fitGraph(graph, graph.graphData().nodes.length);
         };
 
         window.addEventListener("resize", resizeGraph);
@@ -285,6 +358,70 @@ export default function GraphRoom() {
         graphInstance.current = graph;
         setGraphReady(true);
         setIsLoading(false);
+
+        if (autoExploreRoot === root.id) {
+          const discovery = await findInformativePath({
+            rootId: root.id,
+            seedNodes: neighbors,
+            fetchNeighbors: fetchWithCache,
+            fetchPreview: async (node) => {
+              const cached = previewCacheRef.current.get(node.id);
+              if (cached) return cached;
+
+              const preview = await getSummaryByWikidataId(node.id);
+              previewCacheRef.current.set(node.id, preview);
+              return preview;
+            },
+            isCancelled: () => canceled,
+          });
+
+          if (canceled) return;
+
+          if (discovery?.node) {
+            const nextData = mergeDiscoveryPath(
+              graph.graphData(),
+              root.id,
+              discovery.path
+            );
+            graph.graphData(nextData);
+
+            const informativeNode = nextData.nodes.find(
+              (node) => node.id === discovery.node.id
+            );
+
+            selectedRef.current = informativeNode.id;
+            setSelectedNode(informativeNode);
+            setNodePreview({
+              id: informativeNode.id,
+              status: "success",
+              data: discovery.preview,
+            });
+            setSelectedConnections(
+              countNodeConnections(nextData.links, informativeNode.id)
+            );
+            setGraphStats({
+              nodes: nextData.nodes.length,
+              links: nextData.links.length,
+            });
+            setExplorationState({
+              status: "found",
+              message: `Informazione precisa trovata a ${discovery.path.length} ${
+                discovery.path.length === 1 ? "passaggio" : "passaggi"
+              } dalla nuova radice.`,
+            });
+            fitGraph(graph, nextData.nodes.length);
+
+            if (Number.isFinite(informativeNode.x) && Number.isFinite(informativeNode.y)) {
+              graph.centerAt(informativeNode.x, informativeNode.y, 700);
+            }
+          } else {
+            setExplorationState({
+              status: "empty",
+              message:
+                "Nessuna scheda precisa nelle connessioni vicine: puoi continuare l’esplorazione manualmente.",
+            });
+          }
+        }
       } catch {
         if (!canceled) {
           setLoadError("Non sono riuscito a caricare il grafo.");
@@ -305,7 +442,7 @@ export default function GraphRoom() {
       graphInstance.current?._destructor?.();
       graphInstance.current = null;
     };
-  }, [fetchWithCache, navigate, topic]);
+  }, [autoExploreRoot, fetchWithCache, navigate, topic]);
 
   return (
     <main className="graphPage">
@@ -361,7 +498,7 @@ export default function GraphRoom() {
             </span>
             <div>
               <p className="graphEyebrow">SALA DELLA CONOSCENZA</p>
-              <h1>{topicLabel}</h1>
+              <h1>{rootLabel || topicLabel}</h1>
             </div>
           </div>
 
@@ -375,15 +512,50 @@ export default function GraphRoom() {
               <span>Relazioni</span>
             </div>
             <div className="graphStat graphStatWide">
-              <strong>{selectedNode ? selectedNode.type : "Live"}</strong>
+              <strong>{selectedNode ? selectedNode.type : "Radice"}</strong>
               <span>Focus</span>
             </div>
           </div>
         </header>
 
-        <div className="graphViewport">
+        <div
+          className={`graphViewport ${graphReady ? "isReady" : ""}`}
+          aria-busy={isLoading}
+        >
           <div ref={graphRef} className="graphCanvas" />
         </div>
+
+        {(isLoading || loadError) && (
+          <div className="graphStatePanel" role={loadError ? "alert" : "status"}>
+            <img src={brainIcon} alt="" />
+            <p>{loadError || "Sto costruendo le connessioni…"}</p>
+            {loadError && (
+              <button type="button" onClick={() => navigate(0)}>
+                Riprova
+              </button>
+            )}
+          </div>
+        )}
+
+        {explorationState && !loadError && (
+          <div
+            className={`graphExplorationNotice is-${explorationState.status}`}
+            role="status"
+            aria-live="polite"
+          >
+            <span className="graphExplorationPulse" aria-hidden="true" />
+            <div>
+              <strong>
+                {explorationState.status === "searching"
+                  ? "Esplorazione automatica"
+                  : explorationState.status === "found"
+                    ? "Connessione verificata"
+                    : "Nuova radice attiva"}
+              </strong>
+              <p>{explorationState.message}</p>
+            </div>
+          </div>
+        )}
 
         <div className="graphLegend" aria-label="Legenda grafo">
           {legendItems.map((item) => (
@@ -396,6 +568,15 @@ export default function GraphRoom() {
 
         {selectedNode && (
           <aside className="sidePanel">
+            {nodePreview.data?.thumbnail?.source && (
+              <div className="sidePanelImage">
+                <img
+                  src={nodePreview.data.thumbnail.source}
+                  alt={`Immagine di ${nodePreview.data.title || selectedNode.name}`}
+                />
+              </div>
+            )}
+
             <div className="sidePanelHeader">
               <span
                 className="sidePanelDot"
@@ -404,7 +585,35 @@ export default function GraphRoom() {
               <p>{selectedNode.type}</p>
             </div>
 
-            <h2>{selectedNode.name}</h2>
+            <h2>{nodePreview.data?.title || selectedNode.name}</h2>
+
+            {nodePreview.status === "loading" && (
+              <div className="sidePanelLoading" aria-label="Caricamento informazioni">
+                <span />
+                <span />
+                <span />
+              </div>
+            )}
+
+            {nodePreview.status === "success" && (
+              <>
+                {(nodePreview.data.entityDescription || nodePreview.data.description) && (
+                  <p className="sidePanelDescription">
+                    {nodePreview.data.entityDescription || nodePreview.data.description}
+                  </p>
+                )}
+                {nodePreview.data.extract && (
+                  <p className="sidePanelExtract">{nodePreview.data.extract}</p>
+                )}
+              </>
+            )}
+
+            {nodePreview.status === "error" && (
+              <p className="sidePanelUnavailable">
+                Anteprima non disponibile. La scheda completa può contenere i dati
+                Wikidata del nodo.
+              </p>
+            )}
 
             <dl className="nodeMeta">
               <div>
@@ -413,7 +622,7 @@ export default function GraphRoom() {
               </div>
               <div>
                 <dt>Relazioni</dt>
-                <dd>{graphStats.links}</dd>
+                <dd>{selectedConnections}</dd>
               </div>
             </dl>
 
@@ -423,7 +632,7 @@ export default function GraphRoom() {
                 navigate(`/detail/${selectedNode.id}`)
               }
             >
-              Apri dettagli
+              Apri approfondimento
             </button>
           </aside>
         )}
@@ -440,6 +649,114 @@ const legendItems = [
   { label: "Luoghi", color: getPalette("place", false).fill },
   { label: "Concetti", color: getPalette("concept", false).fill },
 ];
+
+async function findInformativePath({
+  rootId,
+  seedNodes,
+  fetchNeighbors,
+  fetchPreview,
+  isCancelled,
+}) {
+  const queue = seedNodes.slice(0, 6).map((node) => ({
+    node,
+    depth: 1,
+    path: [node],
+  }));
+  const visited = new Set([rootId, ...queue.map((entry) => entry.node.id)]);
+  let checkedNodes = 0;
+
+  while (queue.length && checkedNodes < 12 && !isCancelled()) {
+    const remainingChecks = 12 - checkedNodes;
+    const batch = queue.splice(0, Math.min(3, remainingChecks));
+    const previews = await Promise.all(
+      batch.map(async (entry) => {
+        try {
+          return await fetchPreview(entry.node);
+        } catch {
+          return null;
+        }
+      })
+    );
+
+    checkedNodes += batch.length;
+    if (isCancelled()) return null;
+
+    for (let index = 0; index < batch.length; index += 1) {
+      if (previews[index]?.hasDetailedInfo) {
+        return {
+          node: batch[index].node,
+          path: batch[index].path,
+          preview: previews[index],
+        };
+      }
+    }
+
+    const expansions = await Promise.all(
+      batch.map(async (entry) => {
+        if (entry.depth >= 2) return [];
+
+        try {
+          return await fetchNeighbors(entry.node.id);
+        } catch {
+          return [];
+        }
+      })
+    );
+
+    for (let index = 0; index < batch.length; index += 1) {
+      const entry = batch[index];
+
+      for (const neighbor of expansions[index].slice(0, 4)) {
+        if (visited.has(neighbor.id)) continue;
+
+        visited.add(neighbor.id);
+        queue.push({
+          node: neighbor,
+          depth: entry.depth + 1,
+          path: [...entry.path, neighbor],
+        });
+      }
+    }
+  }
+
+  return null;
+}
+
+function mergeDiscoveryPath(currentData, rootId, path) {
+  const nodes = [...currentData.nodes];
+  const links = [...currentData.links];
+  let parentId = rootId;
+
+  for (const pathNode of path) {
+    if (!nodes.find((node) => node.id === pathNode.id)) {
+      nodes.push({ ...pathNode, isRoot: false });
+    }
+
+    const linkExists = links.some((link) => {
+      const source = getNodeId(link.source);
+      const target = getNodeId(link.target);
+
+      return (
+        (source === parentId && target === pathNode.id) ||
+        (source === pathNode.id && target === parentId)
+      );
+    });
+
+    if (!linkExists) {
+      links.push({ source: parentId, target: pathNode.id });
+    }
+
+    parentId = pathNode.id;
+  }
+
+  return { nodes, links };
+}
+
+function countNodeConnections(links, nodeId) {
+  return (links || []).filter((link) =>
+    getNodeId(link.source) === nodeId || getNodeId(link.target) === nodeId
+  ).length;
+}
 
 function classify(label = "") {
   const l = label.toLowerCase();

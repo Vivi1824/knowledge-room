@@ -3,12 +3,47 @@ import axios from "axios";
 const endpoint = "https://query.wikidata.org/sparql";
 
 export async function searchEntity(search) {
+  const normalizedSearch = search?.trim();
+
+  if (/^Q\d+$/i.test(normalizedSearch)) {
+    const qid = normalizedSearch.toUpperCase();
+    const entityRes = await axios.get(
+      "https://www.wikidata.org/w/api.php",
+      {
+        params: {
+          action: "wbgetentities",
+          ids: qid,
+          props: "labels|descriptions",
+          languages: "it|en",
+          languagefallback: 1,
+          format: "json",
+          origin: "*",
+        },
+      }
+    );
+    const entity = entityRes.data?.entities?.[qid];
+
+    if (!entity || entity.missing !== undefined) return null;
+
+    return {
+      id: qid,
+      label:
+        entity.labels?.it?.value ||
+        entity.labels?.en?.value ||
+        qid,
+      description:
+        entity.descriptions?.it?.value ||
+        entity.descriptions?.en?.value ||
+        "",
+    };
+  }
+
   const res = await axios.get(
     "https://www.wikidata.org/w/api.php",
     {
       params: {
         action: "wbsearchentities",
-        search,
+        search: normalizedSearch,
         language: "en",
         format: "json",
         origin: "*"
